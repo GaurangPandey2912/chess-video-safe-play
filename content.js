@@ -151,7 +151,7 @@
           console.log('[CV] Host sending offer');
           conn.send(JSON.stringify({ type: 'offer', sdp: offer }));
           startMonitors();
-          screenEl.style.display = '';
+          screenEl.style.display = 'block';
           setStatus('Connected', 'connected');
         });
       });
@@ -192,7 +192,7 @@
                 conn.send(JSON.stringify({ type: 'answer', sdp: answer }));
                 console.log('[CV] Guest sent answer');
                 startMonitors();
-                screenEl.style.display = '';
+                screenEl.style.display = 'block';
                 setStatus('Connected', 'connected');
               } else if (msg.type === 'ice' && pc) {
                 if (pc.currentRemoteDescription) {
