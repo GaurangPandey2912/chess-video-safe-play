@@ -48,7 +48,7 @@
   const overlay = $('#cv-overlay');
   const peerInput = $('#cv-peer-input');
   const canvas = $('#cv-canvas');
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
   function setStatus(text, cls) {
     statusEl.textContent = text;
