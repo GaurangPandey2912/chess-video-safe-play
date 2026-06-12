@@ -78,7 +78,7 @@
   function createPC() {
     pc = new RTCPeerConnection({ iceServers: [STUN] });
     pc.onicecandidate = e => {
-      if (e.candidate && conn) {
+      if (e.candidate && conn && conn.open) {
         try { conn.send(JSON.stringify({ type: 'ice', candidate: e.candidate })); }
         catch (err) { console.warn('[CV] send ice fail:', err); }
       }
@@ -120,7 +120,7 @@
         console.error('[CV] Host peer error:', err.type, err.message);
         setStatus('Peer error: ' + err.type, 'idle');
       });
-      peer.on('connection', async c => {
+      peer.on('connection', c => {
         conn = c;
         console.log('[CV] Host received connection, conn open:', !!conn.open);
         const dataHandler = async data => {
@@ -143,14 +143,17 @@
         conn.on('data', dataHandler);
         conn.on('error', err => console.error('[CV] Host conn error:', err));
         conn.on('close', () => console.log('[CV] Host conn closed'));
-        createPC();
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        console.log('[CV] Host sending offer');
-        conn.send(JSON.stringify({ type: 'offer', sdp: offer }));
-        startMonitors();
-        screenEl.style.display = '';
-        setStatus('Connected', 'connected');
+        conn.on('open', async () => {
+          console.log('[CV] Host conn open');
+          createPC();
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          console.log('[CV] Host sending offer');
+          conn.send(JSON.stringify({ type: 'offer', sdp: offer }));
+          startMonitors();
+          screenEl.style.display = '';
+          setStatus('Connected', 'connected');
+        });
       });
     } catch (e) {
       setStatus('Camera error: ' + e.message, 'idle');
@@ -166,44 +169,41 @@
         console.log('[CV] Guest Peer ID:', id);
         setStatus('Connecting to host...', 'connecting');
         conn = peer.connect(hostId, { reliable: true });
-        let dataSetup = false;
-        conn.on('data', async data => {
-          dataSetup = true;
-          try {
-            const msg = JSON.parse(data);
-            console.log('[CV] Guest got msg type:', msg.type);
-            if (msg.type === 'offer') {
-              console.log('[CV] Guest received offer');
-              if (!pc) createPC();
-              await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              flushIce();
-              conn.send(JSON.stringify({ type: 'answer', sdp: answer }));
-              console.log('[CV] Guest sent answer');
-              startMonitors();
-              screenEl.style.display = '';
-              setStatus('Connected', 'connected');
-            } else if (msg.type === 'ice' && pc) {
-              if (pc.currentRemoteDescription) {
-                await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-              } else {
-                pendingIce.push(msg.candidate);
-              }
-            }
-          } catch (e) { console.error('[CV] Guest data error:', e); }
-        });
-        conn.on('open', () => {
-          console.log('[CV] Guest conn open (data handler setup:', dataSetup, ')');
-          if (!pc) createPC();
-        });
         conn.on('error', err => {
           console.error('[CV] Conn error:', err);
         });
-        // Log if connection closes
         conn.on('close', () => {
           console.log('[CV] Guest conn closed');
           if (state === 'starting') setStatus('Connection failed', 'idle');
+        });
+        conn.on('open', () => {
+          console.log('[CV] Guest conn open');
+          conn.on('data', async data => {
+            try {
+              const msg = JSON.parse(data);
+              console.log('[CV] Guest got msg type:', msg.type);
+              if (msg.type === 'offer') {
+                console.log('[CV] Guest received offer');
+                if (!pc) createPC();
+                await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                flushIce();
+                conn.send(JSON.stringify({ type: 'answer', sdp: answer }));
+                console.log('[CV] Guest sent answer');
+                startMonitors();
+                screenEl.style.display = '';
+                setStatus('Connected', 'connected');
+              } else if (msg.type === 'ice' && pc) {
+                if (pc.currentRemoteDescription) {
+                  await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+                } else {
+                  pendingIce.push(msg.candidate);
+                }
+              }
+            } catch (e) { console.error('[CV] Guest data error:', e); }
+          });
+          if (!pc) createPC();
         });
       });
       peer.on('error', err => {
