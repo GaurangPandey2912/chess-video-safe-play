@@ -79,3 +79,64 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
 }
+
+/* Friends Dropdown */
+.cv-friends-dropdown {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  background: #1a1a2e;
+  border: 1px solid #30305a;
+  border-radius: 8px;
+  min-width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  z-index: 1000000;
+}
+
+.cv-friend-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  cursor: default;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+.cv-friend-item:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.cv-friend-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cv-friend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.cv-friend-dot.online { background: #4ade80; }
+.cv-friend-dot.offline { background: #6b7280; }
+
+.cv-call-btn {
+  background: #2a6e3e;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.cv-call-btn:hover { background: #3a8e4e; }

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess Video — Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <h1 class="nav-title">♟ Chess Video</h1>
+      <div class="nav-right" id="nav-right">
+        <span id="nav-username" style="display:none"></span>
+        <a href="/login.html" id="nav-login" class="nav-link">Login</a>
+        <a href="/signup.html" id="nav-signup" class="nav-link">Sign Up</a>
+        <button id="nav-logout" class="btn btn-sm btn-danger" style="display:none">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container" id="app">
+    <div id="auth-required" class="center-box" style="display:none">
+      <h2>Welcome to Chess Video</h2>
+      <p>Log in or sign up to manage your friends and connect with them on chess.com.</p>
+      <div class="btn-group">
+        <a href="/login.html" class="btn">Login</a>
+        <a href="/signup.html" class="btn btn-secondary">Sign Up</a>
+      </div>
+    </div>
+
+    <div id="loading" class="loading" style="display:none">
+      <div class="spinner"></div>
+      <p class="mt-1">Loading your friends...</p>
+    </div>
+
+    <div id="dashboard" style="display:none">
+      <div class="dashboard-layout">
+        <aside class="sidebar">
+          <div class="sidebar-section">
+            <h3>Online</h3>
+            <div id="online-friends"><p class="text-muted">No friends online</p></div>
+          </div>
+          <div class="sidebar-section">
+            <h3>Offline</h3>
+            <div id="offline-friends"><p class="text-muted">No offline friends</p></div>
+          </div>
+        </aside>
+
+        <main class="main-content">
+          <div class="section">
+            <h2>Add Friends</h2>
+            <div class="search-box">
+              <input type="text" id="search-input" class="input" placeholder="Search by username...">
+              <button id="search-btn" class="btn">Search</button>
+            </div>
+            <div id="search-results"></div>
+          </div>
+
+          <div class="section">
+            <h2>Friend Requests</h2>
+            <div id="incoming-requests">
+              <h4>Incoming</h4>
+              <p class="text-muted" id="incoming-empty">No pending requests</p>
+            </div>
+            <div id="outgoing-requests">
+              <h4>Outgoing</h4>
+              <p class="text-muted" id="outgoing-empty">No pending requests</p>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>All Friends</h2>
+            <div id="all-friends"><p class="text-muted">No friends yet. Search for users above!</p></div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

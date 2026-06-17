@@ -1,17 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Chess Video — Safe Play",
-  "version": "1.0",
-  "description": "1-on-1 video chat for chess.com with automatic sensitive content monitoring.",
+  "version": "1.1",
+  "description": "1-on-1 video chat for chess.com with friends, automatic sensitive content monitoring.",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
     "https://www.chess.com/*",
-    "https://chess.com/*"
+    "https://chess.com/*",
+    "http://localhost:3000/*"
   ],
   "web_accessible_resources": [{
-    "resources": ["lib/peerjs.min.js"],
+    "resources": ["lib/peerjs.min.js", "auth-callback.html"],
     "matches": ["https://www.chess.com/*", "https://chess.com/*"]
   }],
   "background": {

@@ -18,6 +18,8 @@
   const SKIN_THRESHOLD = 0.45;
   const FRAME_INTERVAL = 3000;
   const CHAT_INTERVAL = 1200;
+  const SERVER_URL = 'http://localhost:3000';
+  const WS_URL = 'ws://localhost:3000';
 
   const container = document.createElement('div');
   container.id = 'chess-video-bar';
@@ -29,8 +31,10 @@
         <input class="cv-input" id="cv-peer-input" placeholder="Paste peer ID to join" />
         <button class="cv-btn cv-btn-join" id="cv-join">Join</button>
         <button class="cv-btn cv-btn-stop" style="display:none" id="cv-stop">Stop</button>
+        <button class="cv-btn" id="cv-friends-btn" style="display:none">Friends</button>
       </div>
     </div>
+    <div class="cv-friends-dropdown" id="cv-friends-dropdown" style="display:none"></div>
     <div class="cv-screen" id="cv-screen">
       <video class="cv-remote" id="cv-remote" playsinline autoplay></video>
       <video class="cv-local" id="cv-local" muted playsinline autoplay></video>
@@ -309,4 +313,255 @@
   };
 
   setStatus('Video Off', 'idle');
+
+  // === Friend System ===
+  let friendWs = null;
+  let friendPeer = null;
+  let friendsList = [];
+  let incomingCallData = null;
+  let friendCallActive = false;
+
+  async function initFriendSystem() {
+    const result = await chrome.storage.local.get(['cv_token', 'cv_user']);
+    if (!result.cv_token || !result.cv_user) return;
+
+    const username = result.cv_user.username;
+    const peerId = 'cv-' + username;
+
+    friendPeer = new Peer(peerId);
+    friendPeer.on('call', handleIncomingPeerCall);
+    friendPeer.on('error', () => {});
+
+    const fb = document.getElementById('cv-friends-btn');
+    if (fb) fb.style.display = '';
+
+    connectFriendWS(result.cv_token, peerId);
+  }
+
+  function connectFriendWS(token, peerId) {
+    if (friendWs) try { friendWs.close(); } catch (e) {}
+    friendWs = new WebSocket(WS_URL);
+
+    friendWs.onopen = () => {
+      friendWs.send(JSON.stringify({ type: 'auth', token, peerId }));
+    };
+    friendWs.onmessage = (event) => {
+      try { handleFriendMessage(JSON.parse(event.data)); } catch (e) {}
+    };
+    friendWs.onclose = () => {
+      setTimeout(() => {
+        chrome.storage.local.get(['cv_token', 'cv_user'], (r) => {
+          if (r.cv_token) connectFriendWS(r.cv_token, 'cv-' + r.cv_user.username);
+        });
+      }, 5000);
+    };
+    friendWs.onerror = () => { try { friendWs.close(); } catch (e) {} };
+  }
+
+  function handleFriendMessage(msg) {
+    switch (msg.type) {
+      case 'friends-list':
+        friendsList = msg.friends;
+        break;
+      case 'friend-online':
+        updateFriendStatus(msg.userId, true, msg.username, msg.peerId);
+        break;
+      case 'friend-offline':
+        updateFriendStatus(msg.userId, false);
+        break;
+      case 'incoming-call':
+        showIncomingCallUI(msg.from, msg.peerId);
+        break;
+      case 'call-accepted':
+        setStatus('Connected', 'connected');
+        break;
+      case 'call-rejected':
+        setStatus('Call rejected', 'idle');
+        setTimeout(() => setStatus('Video Off', 'idle'), 2000);
+        break;
+    }
+  }
+
+  function updateFriendStatus(userId, online, username, peerId) {
+    const f = friendsList.find(x => x._id === userId);
+    if (f) { f.online = online; if (peerId) f.peerId = peerId; }
+  }
+
+  async function callFriendViaPeer(remotePeerId) {
+    if (!friendPeer || friendCallActive) return;
+
+    try {
+      if (!localStream) {
+        await getCamera();
+        localVideo.srcObject = localStream;
+      }
+    } catch (e) {
+      setStatus('Camera access needed', 'idle');
+      return;
+    }
+
+    friendCallActive = true;
+    screenEl.style.display = 'block';
+    setStatus('Calling...', 'connecting');
+
+    const call = friendPeer.call(remotePeerId, localStream);
+    setupFriendCall(call);
+  }
+
+  function setupFriendCall(call) {
+    call.on('stream', (stream) => {
+      remoteStream = stream;
+      remoteVideo.srcObject = stream;
+      setStatus('Connected', 'connected');
+      startMonitors();
+      friendCallActive = true;
+      dd = document.getElementById('cv-friends-dropdown');
+      if (dd) dd.style.display = 'none';
+    });
+    call.on('close', () => {
+      cleanupFriendCall();
+    });
+  }
+
+  function cleanupFriendCall() {
+    stopMonitors();
+    if (pc) { pc.close(); pc = null; }
+    remoteStream = null;
+    remoteVideo.srcObject = null;
+    localVideo.srcObject = null;
+    screenEl.style.display = 'none';
+    overlay.style.display = 'none';
+    friendCallActive = false;
+    if (!document.querySelector('#cv-actions .cv-btn-start')) {
+      setStatus('Video Off', 'idle');
+    }
+  }
+
+  function handleIncomingPeerCall(call) {
+    incomingCallData = { ...(incomingCallData || {}), call };
+    // Auto-answer if user already accepted via notification
+    if (incomingCallData && incomingCallData._answered) {
+      answerFriendCall(call);
+    }
+  }
+
+  async function answerFriendCall(call) {
+    try {
+      if (!localStream) {
+        await getCamera();
+        localVideo.srcObject = localStream;
+      }
+    } catch (e) { return; }
+
+    friendCallActive = true;
+    screenEl.style.display = 'block';
+    call.answer(localStream);
+    call.on('stream', (stream) => {
+      remoteStream = stream;
+      remoteVideo.srcObject = stream;
+      setStatus('Connected', 'connected');
+      startMonitors();
+    });
+    call.on('close', () => cleanupFriendCall());
+  }
+
+  function showIncomingCallUI(from, peerId) {
+    incomingCallData = { from, peerId };
+
+    const old = document.getElementById('cv-call-notification');
+    if (old) old.remove();
+
+    const n = document.createElement('div');
+    n.id = 'cv-call-notification';
+    n.style.cssText = 'position:fixed;bottom:90px;right:20px;z-index:999999;background:#1a1a2e;border:1px solid #30305a;border-radius:8px;padding:12px 16px;box-shadow:0 4px 20px rgba(0,0,0,0.5);font-family:-apple-system,sans-serif;color:#fff;font-size:13px;min-width:220px';
+    n.innerHTML =
+      '<div style="margin-bottom:8px">📞 Incoming call from <strong>' + from.username + '</strong></div>' +
+      '<div style="display:flex;gap:8px">' +
+      '<button id="cv-accept-call" style="background:#2a6e3e;color:#fff;border:none;border-radius:4px;padding:5px 12px;cursor:pointer;font-size:12px">Accept</button>' +
+      '<button id="cv-reject-call" style="background:#7a1a1a;color:#fff;border:none;border-radius:4px;padding:5px 12px;cursor:pointer;font-size:12px">Reject</button>' +
+      '</div>';
+    document.body.appendChild(n);
+
+    document.getElementById('cv-accept-call').onclick = async () => {
+      n.remove();
+      incomingCallData._answered = true;
+      if (incomingCallData.call) {
+        await answerFriendCall(incomingCallData.call);
+      }
+      if (friendWs && incomingCallData.from) {
+        friendWs.send(JSON.stringify({ type: 'call-accepted', to: incomingCallData.from.userId, peerId: friendPeer ? friendPeer.id : '' }));
+      }
+    };
+
+    document.getElementById('cv-reject-call').onclick = () => {
+      n.remove();
+      if (friendWs && incomingCallData.from) {
+        friendWs.send(JSON.stringify({ type: 'call-rejected', to: incomingCallData.from.userId }));
+      }
+      incomingCallData = null;
+    };
+
+    setTimeout(() => { const el = document.getElementById('cv-call-notification'); if (el) el.remove(); }, 30000);
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('cv-call-btn')) {
+      callFriendViaPeer(e.target.dataset.peerid);
+    }
+  });
+
+  const friendsBtn = document.getElementById('cv-friends-btn');
+  const friendsDropdown = document.getElementById('cv-friends-dropdown');
+
+  if (friendsBtn && friendsDropdown) {
+    friendsBtn.onclick = () => {
+      const shown = friendsDropdown.style.display !== 'none';
+      friendsDropdown.style.display = shown ? 'none' : 'block';
+      if (!shown) renderFriendsDropdown();
+    };
+
+    document.addEventListener('click', (e) => {
+      if (friendsDropdown.style.display !== 'none' &&
+          !e.target.closest('#cv-friends-btn') &&
+          !e.target.closest('#cv-friends-dropdown')) {
+        friendsDropdown.style.display = 'none';
+      }
+    });
+  }
+
+  function renderFriendsDropdown() {
+    const dd = document.getElementById('cv-friends-dropdown');
+    if (!dd) return;
+
+    const online = friendsList.filter(f => f.online);
+    const offline = friendsList.filter(f => !f.online);
+
+    if (!friendsList.length) {
+      dd.innerHTML = '<div style="padding:10px;color:#6b7280;font-size:12px;text-align:center">No friends yet.<br>Open the dashboard to add friends!</div>';
+      return;
+    }
+
+    let html = '';
+    if (online.length) {
+      html += '<div style="padding:6px 10px 2px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">Online</div>';
+      online.forEach(f => {
+        html += '<div class="cv-friend-item" data-userid="' + f._id + '">' +
+          '<span class="cv-friend-name"><span class="cv-friend-dot online"></span>' + f.username + '</span>' +
+          '<button class="cv-call-btn" data-peerid="' + (f.peerId || f._id) + '">Call</button>' +
+          '</div>';
+      });
+    }
+    if (offline.length) {
+      html += '<div style="padding:6px 10px 2px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">Offline</div>';
+      offline.forEach(f => {
+        html += '<div class="cv-friend-item" data-userid="' + f._id + '">' +
+          '<span class="cv-friend-name"><span class="cv-friend-dot offline"></span>' + f.username + '</span>' +
+          '</div>';
+      });
+    }
+
+    dd.innerHTML = html;
+  }
+
+  initFriendSystem();
 })();
